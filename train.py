@@ -127,7 +127,9 @@ class Train:
         with open(self.coords_path, 'wb') as f:
             pickle.dump(self.coord_list_cycle, f)
             
-        torch.save(self.input_latent_list_cycle, os.path.join(self.latents_out_path)) 
+        torch.save(self.input_latent_list_cycle, os.path.join(self.latents_out_path))
+
+        torch.cuda.empty_cache()
         
         print("Training successful!") 
         

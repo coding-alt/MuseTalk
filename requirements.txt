@@ -17,5 +17,6 @@ imageio[ffmpeg]
 omegaconf
 ffmpeg-python
 gradio
-spaces
 moviepy
+
+streamlit

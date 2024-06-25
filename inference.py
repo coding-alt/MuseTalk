@@ -149,6 +149,8 @@ class Inference:
                 res_frame_queue.put(res_frame)
         # Close the queue and sub-thread after all tasks are completed
         process_thread.join()
+
+        torch.cuda.empty_cache()
         
         print('Total process time of {} frames including saving images = {}s'.format(
                     video_num,
