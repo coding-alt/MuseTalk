@@ -34,10 +34,10 @@ def inference(avatar_id: str, audio_path: str, batch_size: int = 4, fps: int = 3
 
 
 def train_page():
-    st.header("训练")
+    st.header("训练", divider='rainbow')
     avatar_id = st.text_input("数字人ID")
     video_file = st.file_uploader("上传训练素材 (mp4文件)", type=["mp4"])
-    bbox_shift = st.slider("bbox_shift", min_value=-100, max_value=100, value=5)
+    bbox_shift = st.slider("bbox_shift", min_value=-25, max_value=25, value=5)
     batch_size = st.slider("batch_size", min_value=1, max_value=16, value=4)
     
     if st.button("开始训练"):
@@ -56,8 +56,8 @@ def get_avatar_list():
     return os.listdir(avatar_path)
 
 def inference_page():
-    st.header("推理")
-    avatar_id = st.radio("数字人ID", get_avatar_list())
+    st.header("推理", divider='rainbow')
+    avatar_id = st.radio("数字人ID", get_avatar_list(), horizontal=True)
     audio_file = st.file_uploader("上传音频文件", type=["mp3", "wav"])
     batch_size = st.slider("batch_size", min_value=1, max_value=16, value=4)
     fps = st.slider("fps", min_value=1, max_value=60, value=30)
@@ -75,7 +75,7 @@ def inference_page():
             st.error("请提供完整的推理参数")
 
 pg = st.navigation([
-    st.Page(train_page, title="训练"),
-    st.Page(inference_page, title="推理"),
+    st.Page(train_page, title="训练", icon=":material/video_call:"),
+    st.Page(inference_page, title="推理", icon=":material/data_saver_on:"),
 ])
 pg.run()
