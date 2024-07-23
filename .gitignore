@@ -4,6 +4,7 @@
 .vscode/
 *.pyc
 .ipynb_checkpoints
+__pycache__
 models
 results/
 data/audio/*.wav
