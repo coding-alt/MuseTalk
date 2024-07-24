@@ -27,24 +27,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 timesteps = torch.tensor([0], device=device)
 pe = pe.half()
 vae.vae = vae.vae.half()
-unet.model = unet.model.half()
-
-def video2imgs(vid_path, save_path, ext = '.png',cut_frame = 10000000):
-    cap = cv2.VideoCapture(vid_path)
-    count = 0
-    while True:
-        if count > cut_frame:
-            break
-        ret, frame = cap.read()
-        if ret:
-            cv2.imwrite(f"{save_path}/{count:08d}{ext}", frame)
-            count += 1
-        else:
-            break
-
-def osmakedirs(path_list):
-    for path in path_list:
-        os.makedirs(path) if not os.path.exists(path) else None  
+unet.model = unet.model.half() 
 
 @torch.no_grad() 
 class Inference:
