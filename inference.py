@@ -1,25 +1,24 @@
-import argparse
 import os
-import numpy as np
+import re
 import cv2
-import torch
+import time
+import uuid
 import glob
-import pickle
-from tqdm import tqdm
 import copy
+import torch
+import queue
+import pickle
+import shutil
+import argparse
+import threading
+import subprocess
+import numpy as np
+from tqdm import tqdm
 from musetalk.utils.utils import datagen
 from musetalk.utils.preprocessing import read_imgs
 from musetalk.utils.blending import get_image_blending
 from musetalk.utils.utils import load_all_model
-from moviepy.editor import ImageSequenceClip, AudioFileClip
-import shutil
-
-import threading
-import queue
-
-import time
-import uuid
-import re
+from utils.gfpgan_wrapper import GfpganEnhancer
 
 # load model weights
 audio_processor, vae, unet, pe = load_all_model()
@@ -27,7 +26,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 timesteps = torch.tensor([0], device=device)
 pe = pe.half()
 vae.vae = vae.vae.half()
-unet.model = unet.model.half() 
+unet.model = unet.model.half()
+
+# load gfpgan
+gfpgan_enhancer = GfpganEnhancer()
 
 @torch.no_grad() 
 class Inference:
@@ -69,7 +71,8 @@ class Inference:
         
     def process_frames(self, 
                        res_frame_queue,
-                       video_len):
+                       video_len,
+                       enhance):
         print(video_len)
         while True:
             if self.idx>=video_len-1:
@@ -88,6 +91,9 @@ class Inference:
                 continue
             mask = self.mask_list_cycle[self.idx%(len(self.mask_list_cycle))]
             mask_crop_box = self.mask_coords_list_cycle[self.idx%(len(self.mask_coords_list_cycle))]
+            if enhance:
+                res_frame = gfpgan_enhancer.enhance(res_frame)
+            
             combine_frame = get_image_blending(ori_frame,res_frame,bbox,mask,mask_crop_box)
 
             cv2.imwrite(f"{self.work_temp_dir}/{str(self.idx).zfill(8)}.png",combine_frame)
@@ -96,7 +102,8 @@ class Inference:
     def run(self, 
                   audio_path: str, 
                   infer_video_path: str = None, 
-                  fps: int = 30):
+                  fps: int = 30,
+                  enhance: bool = False):
         os.makedirs(self.work_temp_dir, exist_ok =True)  
         print("start inference")
         ############################################## extract audio feature ##############################################
@@ -109,7 +116,7 @@ class Inference:
         res_frame_queue = queue.Queue()
         self.idx = 0
         # # Create a sub-thread and start it
-        process_thread = threading.Thread(target=self.process_frames, args=(res_frame_queue, video_num))
+        process_thread = threading.Thread(target=self.process_frames, args=(res_frame_queue, video_num, enhance))
         process_thread.start()
 
         gen = datagen(whisper_chunks,
@@ -146,33 +153,30 @@ class Inference:
             pattern = re.compile(r'\d{8}\.png')
             return pattern.match(file)
 
-        print('Start combining images...')
-        tmp_img_save_path = self.work_temp_dir
-        files = [file for file in os.listdir(tmp_img_save_path) if is_valid_image(file)]
-        files.sort(key=lambda x: int(x.split('.')[0]))
-        img_list = [os.path.join(tmp_img_save_path, file) for file in files]
-
-        tmp_video = os.path.join(self.avatar_path, str(uuid.uuid4()) + '.mp4')
         print(f"Merge video...")
+        
+        ffmpeg_command = [
+            'ffmpeg',
+            '-y',
+            '-framerate', str(fps),
+            '-i', os.path.join(self.work_temp_dir, '%08d.png'),
+            '-i', audio_path,
+            '-c:v', 'libx264',
+            '-c:a', 'aac',
+            '-shortest',
+            infer_video_path
+        ]
 
-        # 创建图像序列剪辑
-        video_clip = ImageSequenceClip(img_list, fps=fps)
-        video_clip.write_videofile(tmp_video, fps=fps, codec='libx264', audio=False)
-
-        audio_clip = AudioFileClip(audio_path)
-        video_clip = video_clip.set_audio(audio_clip)
-        print('Video is ready to be saved...')
-        video_clip.write_videofile(infer_video_path, codec='libx264', audio_codec='aac', fps=fps)
-
-        audio_clip.close()
-        video_clip.close()
-
-        # 清理临时目录和文件
-        os.remove(tmp_video)
-        shutil.rmtree(self.work_temp_dir)
-
-        print(f"Inference successful, result is save to {infer_video_path}")
-        return True
+        try:
+            subprocess.check_call(ffmpeg_command)
+            print(f"Inference successful, result is save to {infer_video_path}")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"Inference failed, reason: {e}")
+            return False
+        finally:
+            if os.path.exists(self.work_temp_dir):
+                shutil.rmtree(self.work_temp_dir)
 
 if __name__ == "__main__":
 

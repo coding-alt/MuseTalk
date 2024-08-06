@@ -15,6 +15,7 @@ def train(avatar_id: str, video_path: str, bbox_shift: int = 0, batch_size: int 
         )
         state = musetalk.run()
         if state:
+            os.remove(video_path)
             st.success(f"训练成功！可以开始推理了...")
         else:
             st.error(f"训练失败！")
@@ -24,14 +25,15 @@ def train(avatar_id: str, video_path: str, bbox_shift: int = 0, batch_size: int 
 def inference(avatar_id: str, audio_path: str, batch_size: int = 4, fps: int = 30, save_path: str = None):
     try:
         musetalk = Inference(avatar_id, batch_size)
-        state = musetalk.run(audio_path, infer_video_path=save_path, fps=fps)
+        state = musetalk.run(audio_path, infer_video_path=save_path, fps=fps, enhance=True)
         if state:
             st.video(save_path)
         else:
             st.error(f"推理失败！")
     except Exception as e:
         st.error(f"推理失败！")
-
+    finally:
+        os.remove(audio_path)
 
 def train_page():
     st.header("训练", divider='rainbow')

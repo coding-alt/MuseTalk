@@ -6,11 +6,11 @@ import numpy as np
 from gfpgan import GFPGANer
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageSequenceClip
 
-class VideoEnhancer:
+class GfpganEnhancer:
     def __init__(self):
         # 加载模型
-        CURRENT_SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(CURRENT_SCRIPT_PATH, '../gfpgan/weights', 'GFPGANv1.3.pth')
+        CURRENT_SCRIPT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        model_path = os.path.join(CURRENT_SCRIPT_PATH, 'gfpgan/weights/GFPGANv1.4.pth')
         restorer = GFPGANer(
             model_path=model_path,
             upscale=1,
@@ -92,7 +92,7 @@ class VideoEnhancer:
         return final_output_path
 
 if __name__ == "__main__":
-    video_enhancer = VideoEnhancer()
+    gfpgan_enhancer = GfpganEnhancer()
     video_path = "path_to_your_video.mp4"
-    enhanced_video_path = video_enhancer.video_enhance(video_path)
+    enhanced_video_path = gfpgan_enhancer.video_enhance(video_path)
     print(f"Enhanced video saved to: {enhanced_video_path}")
