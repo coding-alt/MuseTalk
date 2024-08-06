@@ -163,6 +163,7 @@ class Inference:
             '-i', audio_path,
             '-c:v', 'libx264',
             '-c:a', 'aac',
+            '-pix_fmt', 'yuv420p',
             '-shortest',
             infer_video_path
         ]
