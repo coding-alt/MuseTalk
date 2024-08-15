@@ -9,8 +9,8 @@ from moviepy.editor import VideoFileClip, AudioFileClip, ImageSequenceClip
 class GfpganEnhancer:
     def __init__(self):
         # 加载模型
-        CURRENT_SCRIPT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        model_path = os.path.join(CURRENT_SCRIPT_PATH, 'gfpgan/weights/GFPGANv1.4.pth')
+        ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        model_path = os.path.join(ROOT_DIR, 'gfpgan/weights/GFPGANv1.4.pth')
         restorer = GFPGANer(
             model_path=model_path,
             upscale=1,
@@ -41,6 +41,7 @@ class GfpganEnhancer:
         # 获取输入视频文件的基本信息
         video_clip = VideoFileClip(video_path)
         fps = video_clip.fps
+        audio = video_clip.audio
 
         frame_count = 0
 
@@ -75,8 +76,7 @@ class GfpganEnhancer:
 
         # 使用moviepy将源视频的音频拷贝过去合成新视频文件
         temp_video_clip = VideoFileClip(tmp_video)
-        audio_clip = AudioFileClip(video_path)
-        final_clip = temp_video_clip.set_audio(audio_clip)
+        final_clip = temp_video_clip.set_audio(audio)
 
         # 生成最终输出文件路径
         base_name, ext = os.path.splitext(os.path.basename(video_path))
