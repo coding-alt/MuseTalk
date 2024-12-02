@@ -6,20 +6,12 @@ import glob
 import pickle
 from tqdm import tqdm
 import json
-from musetalk.utils.preprocessing import get_landmark_and_bbox,coord_placeholder
+from musetalk.utils.preprocessing import get_landmark_and_bbox
 from musetalk.utils.blending import get_image_prepare_material
 from musetalk.utils.utils import load_all_model
 import shutil
 import queue
 import time
-
-# load model weights
-audio_processor, vae, unet, pe = load_all_model()
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-timesteps = torch.tensor([0], device=device)
-pe = pe.half()
-vae.vae = vae.vae.half()
-unet.model = unet.model.half()
 
 def video2imgs(vid_path, save_path, ext = '.png', cut_frame = 10000000):
     cap = cv2.VideoCapture(vid_path)
@@ -39,6 +31,13 @@ def osmakedirs(path_list):
         os.makedirs(path, exist_ok = True)
 @torch.no_grad() 
 class Train:
+    # Class-level variables to hold the model and state
+    model_loaded = False
+    audio_processor = None
+    vae = None
+    unet = None
+    pe = None
+
     def __init__(self, avatar_id: str, video_path: str, bbox_shift: int = 5, batch_size: int = 4):
         self.avatar_id = avatar_id
         self.video_path = video_path
@@ -57,7 +56,18 @@ class Train:
             "bbox_shift":bbox_shift
         }
         self.batch_size = batch_size
-        self.idx = 0
+        self.load_model()
+        
+    @classmethod
+    def load_model(cls):
+        if not cls.model_loaded:
+            print("Loading models...")
+            cls.audio_processor, cls.vae, cls.unet, cls.pe = load_all_model()
+            cls.pe = cls.pe.half()
+            cls.vae.vae = cls.vae.vae.half()
+            cls.unet.model = cls.unet.model.half()
+            cls.model_loaded = True
+            print("Models loaded successfully.")
         
     def run(self):
         if os.path.exists(self.avatar_path):
@@ -103,7 +113,7 @@ class Train:
             x1, y1, x2, y2 = bbox
             crop_frame = frame[y1:y2, x1:x2]
             resized_crop_frame = cv2.resize(crop_frame,(256,256),interpolation = cv2.INTER_LANCZOS4)
-            latents = vae.get_latents_for_unet(resized_crop_frame)
+            latents = self.vae.get_latents_for_unet(resized_crop_frame)
             input_latent_list.append(latents)
 
         self.frame_list_cycle = frame_list + frame_list[::-1]
@@ -132,27 +142,6 @@ class Train:
         torch.cuda.empty_cache()
         
         print("Training successful!") 
-        
-    def process_frames(self, 
-                       res_frame_queue,
-                       video_len):
-        print(video_len)
-        while True:
-            if self.idx>=video_len-1:
-                break
-            try:
-                res_frame = res_frame_queue.get(block=True, timeout=1)
-            except queue.Empty:
-                continue
-      
-            bbox = self.coord_list_cycle[self.idx%(len(self.coord_list_cycle))]
-            x1, y1, x2, y2 = bbox
-            try:
-                res_frame = cv2.resize(res_frame.astype(np.uint8),(x2-x1,y2-y1))
-            except:
-                continue
-
-            self.idx = self.idx + 1
 
 if __name__ == "__main__":
 
