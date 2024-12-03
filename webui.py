@@ -62,7 +62,7 @@ def inference_page():
     avatar_id = st.radio("数字人ID", get_avatar_list(), horizontal=True)
     audio_file = st.file_uploader("上传音频文件", type=["mp3", "wav"])
     batch_size = st.slider("batch_size", min_value=1, max_value=16, value=4)
-    fps = st.slider("fps", min_value=1, max_value=60, value=30)
+    fps = st.text_input("fps", value=25)
     save_path = f"./results/avatars/{avatar_id}/vid_output/{str(uuid.uuid4())}.mp4"
     
     if st.button("开始推理"):
