@@ -5,13 +5,12 @@ from train import Train
 from inference import Inference
 
 # 定义两个方法
-def train(avatar_id: str, video_path: str, bbox_shift: int = 0, batch_size: int = 4):
+def train(avatar_id: str, video_path: str, bbox_shift: int = 0):
     try:
         musetalk = Train(
             avatar_id = avatar_id, 
             video_path = video_path, 
-            bbox_shift = bbox_shift, 
-            batch_size = batch_size
+            bbox_shift = bbox_shift
         )
         state = musetalk.run()
         if state:
@@ -40,7 +39,6 @@ def train_page():
     avatar_id = st.text_input("数字人ID")
     video_file = st.file_uploader("上传训练素材 (mp4文件)", type=["mp4"])
     bbox_shift = st.slider("bbox_shift", min_value=-25, max_value=25, value=5)
-    batch_size = st.slider("batch_size", min_value=1, max_value=16, value=4)
     
     if st.button("开始训练"):
         if avatar_id and video_file:
@@ -49,7 +47,7 @@ def train_page():
                 f.write(video_file.getbuffer())
             
             with st.spinner('训练中，请稍候...'):
-                train(avatar_id, video_path, bbox_shift, batch_size)
+                train(avatar_id, video_path, bbox_shift)
         else:
             st.error("请提供完整的训练参数")
 
@@ -60,8 +58,8 @@ def get_avatar_list():
 def inference_page():
     st.header("推理", divider='rainbow')
     avatar_id = st.radio("数字人ID", get_avatar_list(), horizontal=True)
-    audio_file = st.file_uploader("上传音频文件", type=["mp3", "wav"])
-    batch_size = st.slider("batch_size", min_value=1, max_value=16, value=4)
+    audio_file = st.file_uploader("上传音频文件", type=["mp3", "wav", "flac"])
+    batch_size = st.slider("batch_size", min_value=1, max_value=16, value=8)
     fps = st.text_input("fps", value=25)
     save_path = f"./results/avatars/{avatar_id}/vid_output/{str(uuid.uuid4())}.mp4"
     
