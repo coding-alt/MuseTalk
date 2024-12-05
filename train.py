@@ -38,7 +38,7 @@ class Train:
     unet = None
     pe = None
 
-    def __init__(self, avatar_id: str, video_path: str, bbox_shift: int = 5, batch_size: int = 4):
+    def __init__(self, avatar_id: str, video_path: str, bbox_shift: int = 5):
         self.avatar_id = avatar_id
         self.video_path = video_path
         self.bbox_shift = bbox_shift
@@ -55,7 +55,6 @@ class Train:
             "video_path":video_path,
             "bbox_shift":bbox_shift
         }
-        self.batch_size = batch_size
         self.load_model()
         
     @classmethod
@@ -160,11 +159,6 @@ if __name__ == "__main__":
                         default=5,
                         help="bbox shift value",
     )
-    parser.add_argument("--batch_size", 
-                        type=int, 
-                        default=4,
-                        help="batch size",
-    )
 
     args = parser.parse_args()
 
@@ -176,8 +170,7 @@ if __name__ == "__main__":
     musetalk = Train(
         avatar_id = args.avatar_id, 
         video_path = args.video_path, 
-        bbox_shift = args.bbox_shift, 
-        batch_size = args.batch_size
+        bbox_shift = args.bbox_shift
     )
     state = musetalk.run()
     endtime = int(time.time())
