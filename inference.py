@@ -19,21 +19,27 @@ from musetalk.utils.preprocessing import read_imgs
 from musetalk.utils.blending import get_image_blending
 from musetalk.utils.utils import load_all_model
 from utils.gfpgan_wrapper import GfpganEnhancer
-
-# load model weights
-audio_processor, vae, unet, pe = load_all_model()
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-timesteps = torch.tensor([0], device=device)
-pe = pe.half()
-vae.vae = vae.vae.half()
-unet.model = unet.model.half()
-
-# load gfpgan
-gfpgan_enhancer = GfpganEnhancer()
+from moviepy.editor import ImageSequenceClip, AudioFileClip
 
 @torch.no_grad() 
 class Inference:
-    def __init__(self, avatar_id: str, batch_size: int = 4):
+    # Class-level variables to hold the model and state
+    model_loaded = False
+    audio_processor = None
+    vae = None
+    unet = None
+    pe = None
+    gfpgan_enhancer = None
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    timesteps = torch.tensor([0], device=device)
+
+    frame_list_cache = {}
+    coord_list_cache = {}
+    mask_list_cache = {}
+    mask_coords_cache = {}
+    latent_list_cache = {}
+
+    def __init__(self, avatar_id: str, batch_size: int = 8):
         self.avatar_id = avatar_id
         self.avatar_path = f"./results/avatars/{avatar_id}"
         self.full_imgs_path = f"{self.avatar_path}/full_imgs" 
@@ -46,34 +52,54 @@ class Inference:
         self.batch_size = batch_size
         self.idx = 0
         self.init()
+        self.load_model()
+
+    @classmethod
+    def load_model(cls):
+        if not cls.model_loaded:
+            print("Loading models...")
+            cls.audio_processor, cls.vae, cls.unet, cls.pe = load_all_model()
+            cls.pe = cls.pe.half()
+            cls.vae.vae = cls.vae.vae.half()
+            cls.unet.model = cls.unet.model.half()
+            cls.gfpgan_enhancer = GfpganEnhancer()
+            cls.model_loaded = True
+            print("Models loaded successfully.")
         
     def init(self):
-        if not os.path.exists(self.latents_out_path):
-            raise Exception(f"latents({self.latents_out_path}) not exists!")
-                
-        self.input_latent_list_cycle = torch.load(self.latents_out_path)
-        with open(self.coords_path, 'rb') as f:
-            self.coord_list_cycle = pickle.load(f)
+        if self.avatar_id not in self.latent_list_cache:
+            if not os.path.exists(self.latents_out_path):
+                raise Exception(f"latents({self.latents_out_path}) not exists!")
+            self.latent_list_cache[self.avatar_id] = torch.load(self.latents_out_path)
+        self.input_latent_list_cycle = self.latent_list_cache[self.avatar_id]
 
-        if not os.path.exists(self.full_imgs_path):
-            raise Exception(f"full_imgs({self.full_imgs_path}) not exists!")
-        input_img_list = glob.glob(os.path.join(self.full_imgs_path, '*.[jpJP][pnPN]*[gG]'))
-        input_img_list = sorted(input_img_list, key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))
-        self.frame_list_cycle = read_imgs(input_img_list)
+        if self.avatar_id not in self.coord_list_cache:
+            with open(self.coords_path, 'rb') as f:
+                self.coord_list_cache[self.avatar_id] = pickle.load(f)
+        self.coord_list_cycle = self.coord_list_cache[self.avatar_id]
 
-        if not os.path.exists(self.mask_coords_path):
-            raise Exception(f"mask({self.mask_coords_path}) not exists!")
-        with open(self.mask_coords_path, 'rb') as f:
-            self.mask_coords_list_cycle = pickle.load(f)
-        input_mask_list = glob.glob(os.path.join(self.mask_out_path, '*.[jpJP][pnPN]*[gG]'))
-        input_mask_list = sorted(input_mask_list, key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))
-        self.mask_list_cycle = read_imgs(input_mask_list)
+        if self.avatar_id not in self.frame_list_cache:
+            if not os.path.exists(self.full_imgs_path):
+                raise Exception(f"full_imgs({self.full_imgs_path}) not exists!")
+            input_img_list = glob.glob(os.path.join(self.full_imgs_path, '*.[jpJP][pnPN]*[gG]'))
+            input_img_list = sorted(input_img_list, key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))
+            self.frame_list_cache[self.avatar_id] = read_imgs(input_img_list)
+        self.frame_list_cycle = self.frame_list_cache[self.avatar_id]
+
+        if self.avatar_id not in self.mask_coords_cache:
+            if not os.path.exists(self.mask_coords_path):
+                raise Exception(f"mask({self.mask_coords_path}) not exists!")
+            with open(self.mask_coords_path, 'rb') as f:
+                self.mask_coords_cache[self.avatar_id] = pickle.load(f)
+        self.mask_coords_list_cycle = self.mask_coords_cache[self.avatar_id]
+
+        if self.avatar_id not in self.mask_list_cache:
+            input_mask_list = glob.glob(os.path.join(self.mask_out_path, '*.[jpJP][pnPN]*[gG]'))
+            input_mask_list = sorted(input_mask_list, key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))
+            self.mask_list_cache[self.avatar_id] = read_imgs(input_mask_list)
+        self.mask_list_cycle = self.mask_list_cache[self.avatar_id]
         
-    def process_frames(self, 
-                       res_frame_queue,
-                       video_len,
-                       enhance):
-        print(video_len)
+    def process_frames(self, res_frame_queue, video_len, enhance):
         while True:
             if self.idx>=video_len-1:
                 break
@@ -92,7 +118,7 @@ class Inference:
             mask = self.mask_list_cycle[self.idx%(len(self.mask_list_cycle))]
             mask_crop_box = self.mask_coords_list_cycle[self.idx%(len(self.mask_coords_list_cycle))]
             if enhance:
-                res_frame = gfpgan_enhancer.enhance(res_frame)
+                res_frame = self.gfpgan_enhancer.enhance(res_frame)
             
             combine_frame = get_image_blending(ori_frame,res_frame,bbox,mask,mask_crop_box)
 
@@ -102,14 +128,14 @@ class Inference:
     def run(self, 
                   audio_path: str, 
                   infer_video_path: str = None, 
-                  fps: int = 30,
+                  fps: int = 25,
                   enhance: bool = False):
         os.makedirs(self.work_temp_dir, exist_ok =True)  
         print("start inference")
         ############################################## extract audio feature ##############################################
         start_time = time.time()
-        whisper_feature = audio_processor.audio2feat(audio_path)
-        whisper_chunks = audio_processor.feature2chunks(feature_array=whisper_feature,fps=fps)
+        whisper_feature = self.audio_processor.audio2feat(audio_path)
+        whisper_chunks = self.audio_processor.feature2chunks(feature_array=whisper_feature,fps=fps)
         print(f"processing audio:{audio_path} costs {(time.time() - start_time) * 1000}ms")
         ############################################## inference batch by batch ##############################################
         video_num = len(whisper_chunks)   
@@ -118,33 +144,28 @@ class Inference:
         # # Create a sub-thread and start it
         process_thread = threading.Thread(target=self.process_frames, args=(res_frame_queue, video_num, enhance))
         process_thread.start()
-
-        gen = datagen(whisper_chunks,
-                      self.input_latent_list_cycle, 
-                      self.batch_size)
+        
+        gen = datagen(whisper_chunks, self.input_latent_list_cycle, self.batch_size)
         start_time = time.time()
         
         for i, (whisper_batch,latent_batch) in enumerate(tqdm(gen,total=int(np.ceil(float(video_num)/self.batch_size)))):
             audio_feature_batch = torch.from_numpy(whisper_batch)
-            audio_feature_batch = audio_feature_batch.to(device=unet.device,
-                                                         dtype=unet.model.dtype)
-            audio_feature_batch = pe(audio_feature_batch)
-            latent_batch = latent_batch.to(dtype=unet.model.dtype)
+            audio_feature_batch = audio_feature_batch.to(device=self.unet.device,
+                                                         dtype=self.unet.model.dtype)
+            audio_feature_batch = self.pe(audio_feature_batch)
+            latent_batch = latent_batch.to(dtype=self.unet.model.dtype)
 
-            pred_latents = unet.model(latent_batch, 
-                                      timesteps, 
+            pred_latents = self.unet.model(latent_batch, 
+                                      self.timesteps, 
                                       encoder_hidden_states=audio_feature_batch).sample
-            recon = vae.decode_latents(pred_latents)
+            recon = self.vae.decode_latents(pred_latents)
             for res_frame in recon:
                 res_frame_queue.put(res_frame)
-        # Close the queue and sub-thread after all tasks are completed
+                
         process_thread.join()
-
         torch.cuda.empty_cache()
         
-        print('Total process time of {} frames including saving images = {}s'.format(
-                    video_num,
-                    time.time()-start_time))
+        print(f"Total process time of {video_num} frames including saving images = {(time.time() - start_time):.2f} seconds")
         
         if infer_video_path is None:
             infer_video_path = os.path.join(self.video_out_dir, str(uuid.uuid4()) + '.mp4')
@@ -153,24 +174,31 @@ class Inference:
             pattern = re.compile(r'\d{8}\.png')
             return pattern.match(file)
 
-        print(f"Merge video...")
-        
-        ffmpeg_command = [
-            'ffmpeg',
-            '-y',
-            '-framerate', str(fps),
-            '-i', os.path.join(self.work_temp_dir, '%08d.png'),
-            '-i', audio_path,
-            '-c:v', 'libx264',
-            '-c:a', 'aac',
-            '-pix_fmt', 'yuv420p',
-            '-shortest',
-            infer_video_path
-        ]
+        print('Start combining images...')
+        tmp_img_save_path = self.work_temp_dir
+        files = [file for file in os.listdir(tmp_img_save_path) if is_valid_image(file)]
+        files.sort(key=lambda x: int(x.split('.')[0]))
+        img_list = [os.path.join(tmp_img_save_path, file) for file in files]
 
+        tmp_video = os.path.join(self.avatar_path, str(uuid.uuid4()) + '.mp4')
+
+        print(f"Merge video...")
+        start_time = time.time()
+        
         try:
-            subprocess.check_call(ffmpeg_command)
-            print(f"Inference successful, result is save to {infer_video_path}")
+            # 创建图像序列剪辑
+            video_clip = ImageSequenceClip(img_list, fps=fps)
+            video_clip.write_videofile(tmp_video, fps=fps, codec='libx264', audio=False)
+
+            audio_clip = AudioFileClip(audio_path)
+            video_clip = video_clip.set_audio(audio_clip)
+            print('Video is ready to be saved...')
+            video_clip.write_videofile(infer_video_path, codec='libx264', audio_codec='aac', fps=fps)
+
+            audio_clip.close()
+            video_clip.close()
+
+            print(f"Inference successful, result is save to {infer_video_path}, Merge video costs {(time.time() - start_time):.2f} seconds")
             return True
         except subprocess.CalledProcessError as e:
             print(f"Inference failed, reason: {e}")
