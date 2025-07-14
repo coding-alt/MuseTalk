@@ -180,15 +180,12 @@ class Inference:
         files.sort(key=lambda x: int(x.split('.')[0]))
         img_list = [os.path.join(tmp_img_save_path, file) for file in files]
 
-        tmp_video = os.path.join(self.avatar_path, str(uuid.uuid4()) + '.mp4')
-
         print(f"Merge video...")
         start_time = time.time()
         
         try:
             # 创建图像序列剪辑
             video_clip = ImageSequenceClip(img_list, fps=fps)
-            video_clip.write_videofile(tmp_video, fps=fps, codec='libx264', audio=False)
 
             audio_clip = AudioFileClip(audio_path)
             video_clip = video_clip.set_audio(audio_clip)
